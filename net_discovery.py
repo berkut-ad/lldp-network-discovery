@@ -24,23 +24,37 @@ VENDOR_COMMANDS = {
         'cdp': None,
         'lldp': 'show lldp neighbors detail',
     },
-    'juniper_junos': {
-        'cdp': None,
-        'lldp': 'show lldp neighbors detail',
-    },
     'paloalto_panos': {
+        'cdp': None,
+        'lldp': 'show lldp neighbors',
+    },
+    'ubiquiti_edge': {
         'cdp': None,
         'lldp': 'show lldp neighbors',
     },
 }
 
 PLATFORM_MAPPING = {
+    # Cisco
     'cisco_ios': 'cisco_ios',
+    'cisco_xe': 'cisco_ios',  # Same commands
+    'cisco_xr': 'cisco_ios',  # CDP/LLDP supported
+
+    # Arista
     'arista_eos': 'arista_eos',
+
+    # Juniper
     'juniper': 'juniper',
     'juniper_junos': 'juniper',
+
+    # Palo Alto
     'paloalto_panos': 'paloalto_panos',
+
+    # Ubiquiti
+    'ubiquiti_edgerouter': 'ubiquiti_edge',
+    'ubiquiti_edgeswitch': 'ubiquiti_edge',
 }
+
 
 def setup_logger(debug=False):
     level = logging.DEBUG if debug else logging.INFO
@@ -171,6 +185,30 @@ def discover_single(ip, creds, templates_path):
         cmd = commands.get(proto)
         if not cmd:
             continue
+
+        if device_type == 'juniper' and proto == 'lldp':
+            try:
+                output = net_connect.send_command('show lldp neighbors')
+                ips = extract_all_ips(output)
+                neighbor_ips.update(ips)
+            except Exception as e:
+                # Check if it was a syntax error, fall back
+                if "syntax error" in str(e).lower():
+                    logging.warning(f"Falling back to per-interface LLDP for {ip}")
+                    try:
+                        summary_output = net_connect.send_command("show lldp neighbors")
+                        interfaces = parse_juniper_lldp_interfaces(summary_output)
+                        for iface in interfaces:
+                            detail_output = net_connect.send_command(f"show lldp neighbors interface {iface}")
+                            ips = extract_all_ips(detail_output)
+                            neighbor_ips.update(ips)
+                    except Exception as inner_e:
+                        logging.error(f"Fallback LLDP per-interface also failed on {ip}: {inner_e}")
+                else:
+                    logging.error(f"LLDP detail failed on {ip}: {e}")
+            continue  # skip default logic below for this proto
+
+    # Default for all other cases
         try:
             output = net_connect.send_command(cmd)
             ips = extract_all_ips(output)
@@ -180,6 +218,17 @@ def discover_single(ip, creds, templates_path):
             continue
 
     return neighbor_ips, [(ip, device_type)]
+
+def parse_juniper_lldp_interfaces(output):
+    interfaces = set()
+    for line in output.strip().splitlines():
+        # Skip header or blank lines
+        if line.startswith("Local Interface") or not line.strip():
+            continue
+        parts = line.split()
+        if len(parts) >= 1:
+            interfaces.add(parts[0])
+    return interfaces
 
 def concurrent_discover(seed_ip, creds, templates_path, max_depth, max_workers=10):
     to_visit = set([seed_ip])
