@@ -190,9 +190,9 @@ def discover_single(ip, creds, templates_path):
         if not cmd:
             continue
 
-        if device_type == 'juniper' and proto == 'lldp':
+        if device_type in ('juniper', 'juniper_junos') and proto == 'lldp':
             try:
-                output = net_connect.send_command('show lldp neighbors')
+                output = net_connect.send_command('show lldp neighbors detail')
                 ips = extract_all_ips(output)
                 neighbor_ips.update(ips)
             except Exception as e:
