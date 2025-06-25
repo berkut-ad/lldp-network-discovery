@@ -191,26 +191,22 @@ def discover_single(ip, creds, templates_path):
             continue
 
         if device_type in ('juniper', 'juniper_junos') and proto == 'lldp':
-            try:
-                output = net_connect.send_command('show lldp neighbors detail')
+            output = net_connect.send_command("show lldp neighbors detail")
+            if "syntax error" in output.lower():
+                logging.warning(f"LLDP detail not supported on {ip}, falling back to per-interface mode.")
+                try:
+                    summary_output = net_connect.send_command("show lldp neighbors")
+                    interfaces = parse_juniper_lldp_interfaces(summary_output)
+                    for iface in interfaces:
+                        detail_output = net_connect.send_command(f"show lldp neighbors interface {iface}")
+                        ips = extract_all_ips(detail_output)
+                        neighbor_ips.update(ips)
+                except Exception as e:
+                    logging.error(f"Fallback LLDP per-interface failed on {ip}: {e}")
+            else:
                 ips = extract_all_ips(output)
                 neighbor_ips.update(ips)
-            except Exception as e:
-                # Check if it was a syntax error, fall back
-                if "syntax error" in str(e).lower():
-                    logging.warning(f"Falling back to per-interface LLDP for {ip}")
-                    try:
-                        summary_output = net_connect.send_command("show lldp neighbors")
-                        interfaces = parse_juniper_lldp_interfaces(summary_output)
-                        for iface in interfaces:
-                            detail_output = net_connect.send_command(f"show lldp neighbors interface {iface}")
-                            ips = extract_all_ips(detail_output)
-                            neighbor_ips.update(ips)
-                    except Exception as inner_e:
-                        logging.error(f"Fallback LLDP per-interface also failed on {ip}: {inner_e}")
-                else:
-                    logging.error(f"LLDP detail failed on {ip}: {e}")
-            continue  # skip default logic below for this proto
+            continue
 
     # Default for all other cases
         try:
