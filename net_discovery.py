@@ -24,6 +24,10 @@ VENDOR_COMMANDS = {
         'cdp': None,
         'lldp': 'show lldp neighbors detail',
     },
+        'juniper_junos': {
+        'cdp': None,
+        'lldp': 'show lldp neighbors detail',
+    },
     'paloalto_panos': {
         'cdp': None,
         'lldp': 'show lldp neighbors',
@@ -45,7 +49,7 @@ PLATFORM_MAPPING = {
 
     # Juniper
     'juniper': 'juniper',
-    'juniper_junos': 'juniper',
+    'juniper_junos': 'juniper_junos',
 
     # Palo Alto
     'paloalto_panos': 'paloalto_panos',
